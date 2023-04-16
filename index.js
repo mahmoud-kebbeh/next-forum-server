@@ -1,6 +1,3 @@
-import * as dotenv from "dotenv";
-dotenv.config();
-
 import mongoose from "mongoose";
 import jsonwebtoken from "jsonwebtoken";
 import { ApolloServer } from "@apollo/server";
@@ -18,9 +15,9 @@ const server = new ApolloServer({
 });
 
 const { url } = await startStandaloneServer(server, {
-  listen: { port: 4000 },
+  listen: { port },
   cors: {
-    origin: ["http://localhost:3000/"]
+    origin: ["*"]
   },
   context: async({req, res}) => {
     return { res }
