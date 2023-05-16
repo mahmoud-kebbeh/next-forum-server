@@ -25,7 +25,7 @@ import User from "./models/User.js";
 
 const mongodbURI = process.env.MONGODB_URI;
 const port = process.env.PORT;
-const origin = process.env.ORIGIN || ['https://next-forum-client.vercel.app/'];
+const origin = process.env.ORIGIN || ['https://next-forum-client.vercel.app'];
 
 const app = express();
 
@@ -92,7 +92,7 @@ await server.start();
 
 // Cross Origin Resource Sharing
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://next-forum-client.vercel.app/");
+  res.header("Access-Control-Allow-Origin", "https://next-forum-client.vercel.app");
   res.header(
     "Access-Control-Allow-Methods",
     "POST, GET, OPTIONS, PATCH, DELETE"
