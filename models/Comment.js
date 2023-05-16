@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const commentSchema = new mongoose.Schema(
+const commentSchema = new mongoose.Schema(
   {
     index: {
       type: Number,
@@ -11,14 +11,12 @@ export const commentSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    type: {
-      type: String,
-      required: true,
+    
+    hidden: {
+    type: Boolean,
+    default: false,
     },
-    forumId: {
-      type: mongoose.Types.ObjectId,
-      required: true,
-    },
+    
     topicId: {
       type: mongoose.Types.ObjectId,
       required: true,

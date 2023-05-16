@@ -5,7 +5,7 @@ import { Query } from "./resolvers/Query.js";
 import { Topic } from "./resolvers/Topic.js";
 import { User } from "./resolvers/User.js";
 
-const resolvers = {
+export const resolvers = {
   Comment,
   Forum,
   Mutation,
@@ -13,5 +13,3 @@ const resolvers = {
   Topic,
   User
 };
-
-export { resolvers };

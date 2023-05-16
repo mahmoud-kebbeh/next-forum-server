@@ -1,48 +1,50 @@
 import Topic from "./../../models/Topic.js";
 import Comment from "./../../models/Comment.js";
 
-const Forum = {
+export const Forum = {
+	topicsCount: async function (parent, args) {
+		const { _id } = parent;
+		
+		return await Topic.countDocuments({ forumId: _id });
+	},
+
+	commentsCount: async function (parent, args) {
+		const { _id } = parent;
+
+		const topics = await Topic.find({ forumId: _id });
+
+		const commentsCounts = await Promise.all(topics.map(async (topic) => await Comment.countDocuments({ topicId: topic._id})));
+
+		return commentsCounts.reduce((total, count) => total + count, 0);
+	},
+
 	topics: async function (parent, args) {
 		const { _id } = parent;
-		const { topicsLimit } = args;
+		const { topicsLimit, hidden, sort } = args;
 		
-		if (topicsLimit) {
-			return await Topic.find({ forumId: _id })
-				.sort({ index: -1 })
-				.limit(topicsLimit);
-		}
-
-		const topics = await Topic.find({ forumId: _id }).sort({ index: -1 });
-		// .sort({ createdAt: -1 });
+		const topics = await Topic.find({ forumId: _id, hidden: hidden === true ? true : hidden === false ? false : { $exists: true } }).sort({ createdAt: sort === "ASC" ? 1 : sort === "DESC" ? -1 : 1 }).limit(`${topicsLimit ? topicsLimit : 0}`)
+		// .sort({ createdAt: -1 })
+			;
 
 		return topics;
 	},
 
 	comments: async function (parent, args) {
 		const { _id } = parent;
-		const { commentsLimit } = args;
+		const { commentsLimit, hidden, sort } = args;
 		
-		if (commentsLimit) {
-			return await Comment.find({ forumId: _id })
-				.sort({ index: -1 })
-				.limit(commentsLimit);
-		}
+		const topics = await Topic.find({ forumId: _id, hidden: hidden === true ? true : hidden === false ? false : { $exists: true } }).sort({ createdAt: sort === "ASC" ? 1 : sort === "DESC" ? -1 : 1 });
+		topicsIds = topics.map(topic => String(topic._id));
+			
+		const comments = await topicsIds.map(async (_id) => {
+			const topicComments = await Comment.find({ topicId: _id, hidden: hidden === true ? true : hidden === false ? false : { $exists: true } })
+				.sort({ createdAt: sort === "ASC" ? 1 : sort === "DESC" ? -1 : 1 })
+				.limit(`${commentsLimit ? commentsLimit : 0}`)
+				;
 
-		const comments = await Comment.find({ forumId: _id }).sort({ index: -1 });
-		// .sort({ createdAt: -1 });
+				return topicComments;
+		});
 
 		return comments;
 	},
-
-	commentsCount: async function (parent, args) {
-		const { _id } = parent;
-		return await Comment.countDocuments({ forumId: _id, type: "POST" });
-	},
-
-	topicsCount: async function (parent, args) {
-		const { _id } = parent;
-		return await Topic.countDocuments({ forumId: _id, type: "THREAD" });
-	},
 };
-
-export { Forum };

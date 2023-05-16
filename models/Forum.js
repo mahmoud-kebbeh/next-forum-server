@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const forumSchema = new mongoose.Schema(
+const forumSchema = new mongoose.Schema(
   {
     index: {
       type: Number,
@@ -12,6 +12,14 @@ export const forumSchema = new mongoose.Schema(
       required: true,
       unique: true,
     },
+    
+    description: String,
+    
+    hidden: {
+    type: Boolean,
+    default: false,
+    },
+    
     slug: {
       type: String,
       required: true,
@@ -19,9 +27,6 @@ export const forumSchema = new mongoose.Schema(
     path: {
       type: String,
       required: true,
-    },
-    description: {
-      type: String,
     },
   },
   { timestamps: true }

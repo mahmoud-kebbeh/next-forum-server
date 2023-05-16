@@ -1,43 +1,59 @@
 import Topic from "./../../models/Topic.js";
 import Comment from "./../../models/Comment.js";
+import UserModel from "./../../models/User.js";
 
-const User = {
+export const User = {
+	topicsCount: async function (parent, args) {
+		const { _id } = parent;
+
+		return await Topic.countDocuments({ userId: _id });
+	},
+
+	commentsCount: async function (parent, args) {
+		const { _id } = parent;
+		
+		return await Comment.countDocuments({ userId: _id });
+	},
+	
 	topics: async function (parent, args) {
 		const { _id } = parent;
-		const { topicsLimit } = args;
-		
-		if (topicsLimit) {
-			return await Topic.find({ userId: _id })
-				.sort({ index: -1 })
-				.limit(topicsLimit);
-		}
+		const { topicsLimit, hidden, sort } = args;
 
-		const topics = await Topic.find({ userId: _id }).sort({ index: -1 });
-		// .sort({ createdAt: -1 });
+    const topics = await Topic.find({ userId: _id, hidden: hidden === true ? true : hidden === false ? false : { $exists: true } }).sort({ createdAt: sort === "ASC" ? 1 : sort === "DESC" ? -1 : 1 }).limit(`${topicsLimit ? topicsLimit : 0}`)
+		// .sort({ createdAt: -1 })
+			;
 
 		return topics;
 	},
 
 	comments: async function (parent, args) {
 		const { _id } = parent;
-		const { commentsLimit } = args;
+		const { commentsLimit, hidden, sort } = args;
 		
-		if (commentsLimit) {
-			return await Comment.find({ userId: _id })
-				.sort({ index: -1 })
-				.limit(commentsLimit);
-		}
-
-		const comments = await Comment.find({ userId: _id }).sort({ index: -1 });
-		// .sort({ createdAt: -1 });
-
+		const comments = await Comment.find({ userId: _id, hidden: hidden === true ? true : hidden === false ? false : { $exists: true } }).sort({ createdAt: sort === "ASC" ? 1 : sort === "DESC" ? -1 : 1 }).limit(`${commentsLimit ? commentsLimit : 0}`)
+		// .sort({ createdAt: -1 })
+			;
+		
 		return comments;
 	},
 
-	commentsCount: async function (parent, args) {
+	followers: async function (parent, args) {
 		const { _id } = parent;
-		return await Comment.countDocuments({ userId: _id, type: "POST" });
+		
+		const followers = await UserModel.find({ following: _id })
+		// .sort({ createdAt: -1 })
+			;
+		
+		return followers;
+	},
+
+	following: async function (parent, args) {
+		const { _id } = parent;
+		
+		const following = await UserModel.find({ followers: _id })
+		// .sort({ createdAt: -1 })
+			;
+		
+		return following;
 	},
 };
-
-export { User };

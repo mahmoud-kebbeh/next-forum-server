@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const userSchema = new mongoose.Schema(
+const userSchema = new mongoose.Schema(
   {
     index: {
       type: Number,
@@ -11,8 +11,6 @@ export const userSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      // minlength: [3, "The name you entered is too short!"],
-      // maxlength: [20, "The name you entered is too long!"],
     },
     username: {
       type: String,
@@ -29,8 +27,8 @@ export const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: true,
-      // minlength: 8,
     },
+    
     slug: {
       type: String,
       required: true,
@@ -39,12 +37,30 @@ export const userSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    
     phoneNumber: String,
-    pictureURL: String,
+    picture: String,
     rank: String,
     signature: String,
+
+    hidden: {
+    type: Boolean,
+    default: false,
+    },
+    banned: {
+    type: Boolean,
+    default: false,
+    },
+    restricted: {
+    type: Boolean,
+    default: false,
+    },
+
     roles: [String],
     permissions: [String],
+
+    followers: [mongoose.Types.ObjectId],
+    following: [mongoose.Types.ObjectId],
   },
   { timestamps: true }
 );

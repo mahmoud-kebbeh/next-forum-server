@@ -4,41 +4,37 @@ import bcryptjs from "bcryptjs";
 import isEmail from "validator/lib/isEmail.js";
 import isStrongPassword from "validator/lib/isStrongPassword.js";
 
-import { createIndex } from "./../../utils/createIndex.js";
+import { formatStringAndKeepCase } from "./../../utils/formatString.js";
 import { createSlug } from "./../../utils/createSlug.js";
 import { createToken } from "./../../utils/createToken.js";
-import {
-  formatStringAndKeepCase,
-  formatStringAndLowerCase,
-} from "./../../utils/formatString.js";
 
 import User from "./../../models/User.js";
 import Forum from "./../../models/Forum.js";
 import Topic from "./../../models/Topic.js";
 import Comment from "./../../models/Comment.js";
 
-const Mutation = {
+export const Mutation = {
   createUser: async function (parent, args) {
     let { displayName, email, password } = args;
 
-    let index, username, slug, path;
-
-    const users = await User.find({}).sort({ index: 1 });
-    index = createIndex(index, users);
-
-    displayName = formatStringAndKeepCase(displayName);
-
-    username = displayName.toLowerCase();
-    const exists = await User.findOne({ $or: [{ username }, { email }] });
-    if (exists) return new Error("Username and/or email already in use!");
-
-    slug = createSlug(index, username);
-    path = `/profile/${slug}`;
+    let index, username;
 
     if (!isEmail(email)) return new Error("Email is not valid!");
     if (!isStrongPassword(password))
-      return new Error("Password is not strong enough!");
-    password = await bcryptjs.hash(password, 12);
+      return new Error("Password must include at least 8 characters including lowercase letters, uppercase letters, numbers, and special characters!");
+    const [ lastUser, exists, hash ] = await Promise.all([ User.find({}).sort({ index: -1 }).limit(1).select("index"), User.findOne({ $or: [{ username }, { email }] }), bcryptjs.hash(password, 12) ]);
+    index = lastUser[0] ? lastUser[0].index + 1 : 1;
+    if (exists) return new Error("Username and/or email already taken!");
+
+    displayName = formatStringAndKeepCase(displayName);
+    username = displayName.toLowerCase();
+
+
+    const slug = createSlug(index, username);
+    const path = `/profile/${slug}`;
+
+    const roles = ["Member"];
+    const permissions = ["read:own_user", "write:own_user"];
 
     try {
       const user = await User.create({
@@ -46,70 +42,110 @@ const Mutation = {
         displayName,
         username,
         email,
-        password,
+        password: hash,
         slug,
         path,
+        roles,
+        permissions
       });
 
       return user;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  editUser: async function (parent, args) {
-    let { index, displayName, email, password } = args;
-    let username, slug, path;
+  updateUserCore: async function (parent, args) {
+    let { displayName, email, password } = args;
+    let username;
 
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id))
       return new Error("User does not exist (Invalid ID)!");
 
-    const user = await User.findById(_id);
-    if (!user) return new Error("User does not exist!");
-
-    if (index !== user.index) {
-      const users = await User.find({}).sort({ index: 1 });
-      index = index ? createIndex(index, users) : user.index;
-      if (index === user.index) index = user.index;
-    } else {
-      index = user.index;
-    }
-
-    displayName = formatStringAndKeepCase(displayName);
-
-    username = displayName.toLowerCase();
-
-    slug = createSlug(index, username);
-    path = `/profile/${slug}`;
-
     if (!isEmail(email)) return new Error("Email is not valid!");
     if (!isStrongPassword(password))
-      return new Error("Password is not strong enough!");
-    password = await bcryptjs.hash(password, 12);
+      return new Error("Password must include at least 8 characters including lowercase letters, uppercase letters, numbers, and special characters!");
+    const [ user, hash ] = await Promise.all([User.findById(_id), bcryptjs.hash(password, 12)]);
+    if (!user) return new Error("User does not exist!");
+
+    displayName = formatStringAndKeepCase(displayName);
+    username = displayName.toLowerCase();
+
+    const slug = createSlug(user.index, username);
+    const path = `/profile/${slug}`;
 
     try {
-      const editedUser = await User.findByIdAndUpdate(
+      const updatedUser = await User.findByIdAndUpdate(
         _id,
         {
-          index,
           displayName,
           username,
           email,
-          password,
+          password: hash,
           slug,
           path,
         },
         { new: true }
       );
 
-      return editedUser;
+      return updatedUser;
     } catch (error) {
       if (error.message.includes("E11000"))
         return new Error("Username and/or email already taken!");
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeUser: async function (parent, args) {
+  updateUserPriviliges: async function (parent, args) {
+    const { _id, roles, permissions } = args;
+
+    if (!mongoose.Types.ObjectId.isValid(_id))
+      return new Error("User does not exist (Invalid ID)!");
+
+    const user = await User.findById(_id);
+    if (!user) return new Error("User does not exist!");
+
+    try {
+      const updatedUser = await User.findByIdAndUpdate(
+        _id,
+        {
+          roles,
+          permissions
+        },
+        { new: true }
+      );
+
+      return updatedUser;
+    } catch (error) {
+      return new Error(error.message);
+    }
+  },
+  updateUserInfo: async function (parent, args) {
+    const { _id, phoneNumber, picture, rank, signature } = args;
+
+    if (!mongoose.Types.ObjectId.isValid(_id))
+      return new Error("User does not exist (Invalid ID)!");
+
+    const user = await User.findById(_id);
+    if (!user) return new Error("User does not exist!");
+
+    try {
+      const updatedUser = await User.findByIdAndUpdate(
+        _id,
+        {
+          phoneNumber,
+          picture,
+          rank,
+          signature
+        },
+        { new: true }
+      );
+
+      return updatedUser;
+    } catch (error) {
+      return new Error(error.message);
+    }
+  },
+  toggleHideUser: async function (parent, args) {
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id)) {
       return new Error("User does not exist (Invalid ID)!");
@@ -119,39 +155,99 @@ const Mutation = {
     if (!user) return new Error("User does not exist!");
 
     try {
-      const removedUser = await User.findByIdAndRemove(_id);
+      const updatedUser = await User.findByIdAndUpdate(
+        _id,
+        {
+          hidden: !user.hidden
+        },
+        { new: true }
+      );
 
-      await Comment.deleteMany({ userId: _id });
-      await Topic.deleteMany({ userId: _id });
-
-      return removedUser;
+      return updatedUser ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeAllUsers: async function (parent, args) {
+  toggleBanUser: async function (parent, args) {
+    const { _id } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id)) {
+      return new Error("User does not exist (Invalid ID)!");
+    }
+
+    const user = await User.findById(_id);
+    if (!user) return new Error("User does not exist!");
+
     try {
-      await Comment.deleteMany({});
-      await Topic.deleteMany({});
+      const updatedUser = await User.findByIdAndUpdate(
+        _id,
+        {
+          banned: !user.banned
+        },
+        { new: true }
+      );
 
-      const removedUsers = await User.deleteMany({});
-
-      return removedUsers.acknowledged;
+      return updatedUser ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
+    }
+  },
+  toggleFollowUser: async function (parent, args) {
+    const { followerId, followingId } = args;
+    if (!mongoose.Types.ObjectId.isValid(followerId) || !mongoose.Types.ObjectId.isValid(followingId)) {
+      return new Error("User does not exist (Invalid ID)!");
+    }
+
+    const follower = await User.findById(followerId);
+    const following = await User.findById(followingId);
+    if (!follower || !following) return new Error("User does not exist!");
+
+    const test = follower.following.filter(item => item._id === followingId);
+    try {
+      const [ updatedFollower, updatedFollowing ] = await Promise.all([
+        User.findByIdAndUpdate(followerId, { following: follower.following.includes(String(followingId)) ? follower.following.filter(follower => follower._id === followingId) : [...follower.following, followingId] }),
+        User.findByIdAndUpdate(followingId, { followers: following.followers.includes(String(followerId)) ? following.followers.filter(following => following._id === followerId) : [...following.followers, followerId] }) ]);
+
+      return updatedFollower && updatedFollowing ? true : false;
+    } catch (error) {
+      return new Error(error.message);
+    }
+  },
+  deleteUser: async function (parent, args) {
+    const { _id } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id)) {
+      return new Error("User does not exist (Invalid ID)!");
+    }
+
+    const user = await User.findById(_id);
+    if (!user) return new Error("User does not exist!");
+
+    try {
+      const [ deletedUser ] = await Promise.all([User.findByIdAndRemove(_id), Comment.deleteMany({ userId: _id }), Topic.deleteMany({ userId: _id })]);
+      
+      return deletedUser ? true : false;
+    } catch (error) {
+      return new Error(error.message);
+    }
+  },
+  deleteAllUsers: async function (parent, args) {
+    try {
+      const [ deletedUsers ] = await Promise.all([User.deleteMany({}), Comment.deleteMany({}), Topic.deleteMany({})]);
+
+      return deletedUsers.acknowledged;
+    } catch (error) {
+      return new Error(error.message);
     }
   },
 
-  createForum: async function (parent, args) {
-    let { index, title, description } = args;
+  createForum: async function (parent, args, ctx) {
+    const { title, description } = args;
+    let index;
 
-    const forums = await Forum.find({}).sort({ index: 1 });
-    index = createIndex(index, forums);
+    const [ lastForum, exists ] = await Promise.all([ Forum.find({}).sort({ index: -1 }).limit(1).select("index"), Forum.findOne({ title }) ]);
+    index = lastForum[0] ? lastForum[0].index + 1 : 1;
+    if (exists) return new Error("Forum title already taken!");
 
-    const exists = await Forum.findOne({ title });
-    if (exists) return new Error("Title already in use!");
-
-    const slug = createSlug(index, formatStringAndLowerCase(title));
+    const slug = createSlug(index, formatStringAndKeepCase(title).toLowerCase());
     const path = `/forum/${slug}`;
 
     try {
@@ -165,12 +261,11 @@ const Mutation = {
 
       return forum;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  editForum: async function (parent, args) {
-    let { index, title, description } = args;
-    const { _id } = args;
+  updateForum: async function (parent, args) {
+    const { _id, title, description } = args;
     if (!mongoose.Types.ObjectId.isValid(_id)) {
       return new Error("Forum does not exist (Invalid ID)!");
     }
@@ -178,32 +273,29 @@ const Mutation = {
     const forum = await Forum.findById(_id);
     if (!forum) return new Error("Forum does not exist!");
 
-    if (index !== forum.index) {
-      const forums = await Forum.find({}).sort({ index: 1 });
-      index = index ? createIndex(index, forums) : forum.index;
-      if (index === forum.index) index = forum.index;
-    } else {
-      index = forum.index;
-    }
-
-    const slug = createSlug(index, formatStringAndLowerCase(title));
+    const slug = createSlug(forum.index, formatStringAndKeepCase(title).toLowerCase());
     const path = `/forum/${slug}`;
 
     try {
-      const editedForum = await Forum.findByIdAndUpdate(
+      const updatedForum = await Forum.findByIdAndUpdate(
         _id,
-        { index, title, description, slug, path },
+        {
+          title,
+          description,
+          slug,
+          path
+        },
         { new: true }
       );
 
-      return editedForum;
+      return updatedForum;
     } catch (error) {
       if (error.message.includes("E11000"))
-        return new Error("Title already taken!");
-      new Error(error.message);
+        return new Error("Forum title already taken!");
+      return new Error(error.message);
     }
   },
-  removeForum: async function (parent, args) {
+  toggleHideForum: async function (parent, args) {
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id)) {
       return new Error("Forum does not exist (Invalid ID)!");
@@ -213,106 +305,139 @@ const Mutation = {
     if (!forum) return new Error("Forum does not exist!");
 
     try {
-      const removedForum = await Forum.findByIdAndRemove(_id);
+      const updatedForum = await Forum.findByIdAndUpdate(
+        _id,
+        {
+          hidden: !forum.hidden
+        },
+        { new: true }
+      );
 
-      await Comment.deleteMany({ forumId: _id });
-      await Topic.deleteMany({ forumId: _id });
-
-      return removedForum;
+      return updatedForum ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeAllForums: async function (parent, args) {
+  deleteForum: async function (parent, args) {
+    const { _id } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id)) {
+      return new Error("Forum does not exist (Invalid ID)!");
+    }
+
+    const forum = await Forum.findById(_id);
+    if (!forum) return new Error("Forum does not exist!");
+
     try {
-      await Comment.deleteMany({});
-      await Topic.deleteMany({});
+      const [ deletedForum ] = await Promise.all([Forum.findByIdAndRemove(_id), Comment.deleteMany({}), Topic.deleteMany({})]);
 
-      const removedForums = await Forum.deleteMany({});
-
-      return removedForums.acknowledged;
+      return deletedForum ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
+    }
+  },
+  deleteAllForums: async function (parent, args) {
+    try {
+      const [ deletedForums ] = await Promise.all([Forum.deleteMany({}), Comment.deleteMany({}), Topic.deleteMany({})]);
+
+      return deletedForums.acknowledged;
+    } catch (error) {
+      return new Error(error.message);
     }
   },
 
   createTopic: async function (parent, args) {
-    let { index, title, type, forumId, userId } = args;
-    if (!mongoose.Types.ObjectId.isValid(forumId))
-      return new Error("Forum does not exist (Invalid ID)!");
+    const { title, forumId, userId } = args;
     if (!mongoose.Types.ObjectId.isValid(userId))
       return new Error("User does not exist (Invalid ID)!");
+    if (!mongoose.Types.ObjectId.isValid(forumId))
+      return new Error("Forum does not exist (Invalid ID)!");
 
-    const forum = await Forum.findById(forumId);
-    if (!forum) return new Error("Forum does not exist!");
-    const user = await User.findById(userId);
+    const [ user, forum ] = await Promise.all([ User.findById(userId), Forum.findById(forumId) ]);
     if (!user) return new Error("User does not exist!");
+    if (!forum) return new Error("Forum does not exist!");
 
-    if (type === "THREAD") {
-      const threads = await Topic.find({ type: "THREAD" }).sort({ index: 1 });
-      index = createIndex(index, threads);
-    }
-    if (type === "CHAT") {
-      const chats = await Topic.find({ type: "CHAT" }).sort({ index: 1 });
-      index = createIndex(index, chats);
-    }
+    let index;
 
-    const slug = createSlug(index, formatStringAndLowerCase(title));
+    const lastTopic = await Topic.find({}).sort({ index: -1 }).limit(1).select("index");
+    index = lastTopic[0] ? lastTopic[0].index + 1 : 1;
+
+    const slug = createSlug(index, formatStringAndKeepCase(title).toLowerCase());
     const path = `/topic/${slug}`;
 
     try {
       const topic = await Topic.create({
         index,
         title,
-        type,
         forumId,
         userId,
         slug,
-        path,
+        path
       });
 
       return topic;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  editTopic: async function (parent, args) {
-    let { index, title, forumId } = args;
-    const { _id } = args;
+  updateTopic: async function (parent, args) {
+    const { title, _id, forumId } = args;
     if (!mongoose.Types.ObjectId.isValid(_id))
       return new Error("Topic does not exist (Invalid ID)!");
     if (!mongoose.Types.ObjectId.isValid(forumId))
       return new Error("Forum does not exist (Invalid ID)!");
 
-    const topic = await Topic.findById(_id);
+    const [ topic, forum ] = await Promise.all([ Topic.findById(_id), Forum.findById(forumId) ]);
     if (!topic) return new Error("Topic does not exist!");
-    const forum = await Forum.findById(forumId);
     if (!forum) return new Error("Forum does not exist!");
 
-    if (index !== topic.index) {
-      const topics = await Topic.find({}).sort({ index: 1 });
-      index = index ? createIndex(index, topics) : topic.index;
-      if (index === topic.index) index = topic.index;
-    } else {
-      index = topic.index;
-    }
-
-    const slug = createSlug(index, formatStringAndLowerCase(title));
+    const slug = createSlug(topic.index, formatStringAndKeepCase(title).toLowerCase());
     const path = `/topic/${slug}`;
 
     try {
-      const editedTopic = await Topic.findByIdAndUpdate(
+      const updatedTopic = await Topic.findByIdAndUpdate(
         _id,
-        { index, title, forumId, slug, path },
+        {
+          title,
+          slug,
+          path
+        },
         { new: true }
       );
 
-      return editedTopic;
+      return updatedTopic;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeTopic: async function (parent, args) {
+  updateTopicForum: async function(parent, args) {
+    const { _id, forumId, newForumId } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id))
+      return new Error("Topic does not exist (Invalid ID)!");
+    if (!mongoose.Types.ObjectId.isValid(forumId))
+      return new Error("Forum does not exist (Invalid ID)!");
+    if (!mongoose.Types.ObjectId.isValid(newForumId))
+      return new Error("New forum does not exist (Invalid ID)!");
+
+    const [ topic, forum, forums ] = await Promise.all([ Topic.findById(_id), Forum.findById(forumId), Forum.find({}) ])
+    if (!topic) return new Error("Topic does not exist!");
+    if (!forum) return new Error("Forum does not exist!");
+    if (forums.find(forum => String(forum._id) === newForumId) === -1) return new Error("New forum does not exist!");
+
+    try {
+      const updatedTopic = await Topic.findByIdAndUpdate(
+        _id,
+        {
+          forumId: newForumId
+        },
+        { new: true }
+      );
+
+      return updatedTopic;
+    } catch (error) {
+      return new Error(error.message);
+    }
+  },
+  toggleHideTopic: async function (parent, args) {
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id)) {
       return new Error("Topic does not exist (Invalid ID)!");
@@ -322,109 +447,94 @@ const Mutation = {
     if (!topic) return new Error("Topic does not exist!");
 
     try {
-      await Comment.deleteMany({ topicId: _id });
+      const updatedTopic = await Topic.findByIdAndUpdate(
+        _id,
+        {
+          hidden: !topic.hidden
+        },
+        { new: true }
+      );
 
-      const removedTopic = await Topic.findByIdAndRemove(_id);
-
-      return removedTopic;
+      return updatedTopic ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeAllTopics: async function (parent, args) {
+  deleteTopic: async function (parent, args) {
+    const { _id } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id)) {
+      return new Error("Topic does not exist (Invalid ID)!");
+    }
+
+    const topic = await Topic.findById(_id);
+    if (!topic) return new Error("Topic does not exist!");
+
     try {
-      await Comment.deleteMany({});
+      const [ deletedTopic ] = await Promise.all([Topic.findByIdAndRemove(_id), Comment.deleteMany({ topicId: _id }) ]);
 
-      const removedTopics = await Topic.deleteMany({});
-
-      return removedTopics.acknowledged;
+      return deletedTopic ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
+    }
+  },
+  deleteAllTopics: async function (parent, args) {
+    try {
+      const [ deletedTopics ] = await Promise.all([ Topic.deleteMany({}), Comment.deleteMany({}) ]);
+
+      return deletedTopics.acknowledged;
+    } catch (error) {
+      return new Error(error.message);
     }
   },
 
   createComment: async function (parent, args) {
-    let { content, type, forumId, topicId, userId } = args;
-    if (!mongoose.Types.ObjectId.isValid(forumId))
-      return new Error("Forum does not exist (Invalid ID)!");
+    const { content, topicId, userId } = args;
     if (!mongoose.Types.ObjectId.isValid(topicId))
       return new Error("Topic does not exist (Invalid ID)!");
     if (!mongoose.Types.ObjectId.isValid(userId))
       return new Error("User does not exist (Invalid ID)!");
 
-    const forum = await Forum.findById(forumId);
-    if (!forum) return new Error("Forum does not exist!");
-    const topic = await Topic.findById(topicId);
+    const [ lastComment, topic, user ] = await Promise.all([ Comment.find({}).sort({ index: -1 }).limit(1).select("index"), Topic.findById(topicId), User.findById(userId) ])
     if (!topic) return new Error("Topic does not exist!");
-    const user = await User.findById(userId);
     if (!user) return new Error("User does not exist!");
-
-    let index;
-
-    if (type === "POST") {
-      const posts = await Comment.find({ type: "POST" }).sort({ index: 1 });
-      index = createIndex(index, posts);
-    }
-    if (type === "MESSAGE") {
-      const messages = await Comment.find({ type: "MESSAGE" }).sort({
-        index: 1,
-      });
-      index = createIndex(index, messages);
-    }
 
     try {
       const comment = await Comment.create({
-        index,
+        index: lastComment[0] ? lastComment[0].index + 1 : 1,
         content,
-        type,
-        forumId,
         topicId,
         userId,
       });
 
       return comment;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  editComment: async function (parent, args) {
-    let { index, content, forumId, topicId } = args;
+  updateComment: async function (parent, args) {
+    let { content } = args;
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id))
       return new Error("Comment does not exist (Invalid ID)!");
-    if (!mongoose.Types.ObjectId.isValid(forumId))
-      return new Error("Forum does not exist (Invalid ID)!");
-    if (!mongoose.Types.ObjectId.isValid(topicId))
-      return new Error("Forum does not exist (Invalid ID)!");
 
-    const comment = await Comment.findById(_id);
+    const comment = await Comment.findById(_id)
     if (!comment) return new Error("Comment does not exist!");
-    const forum = await Forum.findById(forumId);
-    if (!forum) return new Error("Forum does not exist!");
-    const topic = await Topic.findById(topicId);
-    if (!topic) return new Error("Topic does not exist!");
-
-    if (index !== comment.index) {
-      const comments = await Comment.find({}).sort({ index: 1 });
-      index = index ? createIndex(index, comments) : comment.index;
-      if (index === comment.index) index = comment.index;
-    } else {
-      index = comment.index;
-    }
 
     try {
-      const editedComment = await Comment.findByIdAndUpdate(
+      const updatedComment = await Comment.findByIdAndUpdate(
         _id,
-        { index, content, forumId, topicId },
+        {
+          content
+        },
         { new: true }
       );
 
-      return editedComment;
+      return updatedComment;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeComment: async function (parent, args) {
+  toggleHideComment: async function (parent, args) {
     const { _id } = args;
     if (!mongoose.Types.ObjectId.isValid(_id)) {
       return new Error("Comment does not exist (Invalid ID)!");
@@ -434,61 +544,64 @@ const Mutation = {
     if (!comment) return new Error("Comment does not exist!");
 
     try {
-      const removedComment = await Comment.findByIdAndRemove(_id);
+      const updatedComment = await Comment.findByIdAndUpdate(
+        _id,
+        {
+          hidden: !comment.hidden
+        },
+        { new: true }
+      );
 
-      return removedComment;
+      return updatedComment ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
-  removeAllComments: async function (parent, args) {
+  deleteComment: async function (parent, args) {
+    const { _id } = args;
+    if (!mongoose.Types.ObjectId.isValid(_id)) {
+      return new Error("Comment does not exist (Invalid ID)!");
+    }
+
+    const comment = await Comment.findById(_id);
+    if (!comment) return new Error("Comment does not exist!");
+
     try {
-      await Topic.deleteMany({});
-
-      const removedComments = await Comment.deleteMany({});
-
-      return removedComments.acknowledged;
+      return await Comment.findByIdAndRemove(_id) ? true : false;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
+    }
+  },
+  deleteAllComments: async function (parent, args) {
+    try {
+      const [ deletedComments ] = await Promise.all([ Comment.deleteMany({}), Topic.deleteMany({}) ]);
+
+      return deletedComments.acknowledged;
+    } catch (error) {
+      return new Error(error.message);
     }
   },
 
   createTopicWithComment: async function (parent, args) {
-    let { topicType, commentType, title, content, forumId, userId } = args;
+    let { title, content, forumId, userId } = args;
     if (!mongoose.Types.ObjectId.isValid(forumId))
-      return new Error("Forum does not exist (Invalid ID)");
+      return new Error("Forum does not exist (Invalid ID)!");
     if (!mongoose.Types.ObjectId.isValid(userId))
-      return new Error("User does not exist (Invalid ID)");
+      return new Error("User does not exist (Invalid ID)!");
 
-    const forum = await Forum.findById(forumId);
-    if (!forum) return new Error("Forum does not exist");
-    const user = await User.findById(userId);
-    if (!user) return new Error("User does not exist");
+    const [ forum, user, lastTopic, lastComment ] = await Promise.all([ Forum.findById(forumId), User.findById(userId), Topic.find({}).sort({ index: -1 }).limit(1).select("index"), Comment.find({}).sort({ index: -1 }).limit(1).select("index") ])
+    if (!forum) return new Error("Forum does not exist!");
+    if (!user) return new Error("User does not exist!");
 
-    let topicIndex, commentIndex, slug, path;
-    if (topicType === "THREAD") {
-      const threads = await Topic.find({ type: "THREAD" }).sort({ index: 1 });
-      topicIndex = createIndex(topicIndex, threads);
-      slug = createSlug(topicIndex, formatStringAndLowerCase(title));
-      path = `/topic/${slug}`;
-      const posts = await Comment.find({ type: "POST" }).sort({ index: 1 });
-      commentIndex = createIndex(commentIndex, posts);
-    }
-    if (topicType === "CHAT") {
-      const chats = await Topic.find({ type: "CHAT" }).sort({ index: 1 });
-      topicIndex = createIndex(topicIndex, chats);
-      slug = createSlug(topicIndex, formatStringAndLowerCase(title));
-      path = `/messenger/${slug}`;
-      const messages = await Comment.find({ type: "MESSAGE" }).sort({
-        index: 1,
-      });
-      commentIndex = createIndex(commentIndex, messages);
-    }
+    const topicIndex = lastTopic[0] ? lastTopic[0].index + 1 : 1;
+    const commentIndex = lastComment[0] ? lastComment[0].index + 1 : 1;
+
+    const slug = createSlug(topicIndex, formatStringAndKeepCase(title).toLowerCase());
+    const path = `/topic/${slug}`;
 
     try {
       const topic = await Topic.create({
         index: topicIndex,
-        type: topicType,
         title,
         forumId,
         userId,
@@ -497,7 +610,6 @@ const Mutation = {
       });
       const comment = await Comment.create({
         index: commentIndex,
-        type: commentType,
         content,
         forumId,
         topicId: String(topic._id),
@@ -506,7 +618,7 @@ const Mutation = {
 
       return topic;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
 
@@ -515,7 +627,7 @@ const Mutation = {
 
     // let username = formatStringAndLowerCase(displayName);
     const user = await User.findOne({
-      $or: [{ displayName }, { email }],
+      $or: [{ displayName }, { username: formatStringAndKeepCase(displayName).toLowerCase() }, { email }],
     });
     if (!user)
       return new Error(
@@ -543,17 +655,17 @@ const Mutation = {
     // console.log(ctx.res);
       return user;
     } catch (error) {
-      throw new Error(error.message);
+      return new Error(error.message);
     }
   },
 
   signup: async function (parent, args, ctx) {
     let { displayName, email, password } = args;
 
-    let index, username, slug, path;
+    let index, username;
 
-    const users = await User.find({}).sort({ index: 1 });
-    index = createIndex(index, users);
+    const lastUser = await User.find({}).sort({ index: -1 }).limit(1).select("index");
+    index = lastUser[0] ? lastUser[0].index + 1 : 1;
 
     displayName = formatStringAndKeepCase(displayName);
 
@@ -561,13 +673,16 @@ const Mutation = {
     const exists = await User.findOne({ $or: [{ username }, { email }] });
     if (exists) return new Error("Username and/or email already in use!");
 
-    slug = createSlug(index, username);
-    path = `/profile/${slug}`;
+    const slug = createSlug(index, username);
+    const path = `/profile/${slug}`;
 
     if (!isEmail(email)) return new Error("Email is not valid!");
     if (!isStrongPassword(password))
       return new Error("Password is not strong enough!");
     password = await bcryptjs.hash(password, 12);
+
+    const roles = ["Member"];
+    const permissions = ["read:own_user", "write:own_user"];
 
     try {
       const user = await User.create({
@@ -578,16 +693,15 @@ const Mutation = {
         password,
         slug,
         path,
+        roles,
+        permissions
       });
 
-      const token = createToken(user._id);
-      ctx.res.setHeader("Set-Cookie", `authorization=${token}; path=/; Max-Age=360000`);
+      ctx.res.cookie("authorization", createToken(user._id), { maxAge: 60*60*24*1000 });
 
       return user;
     } catch (error) {
-      new Error(error.message);
+      return new Error(error.message);
     }
   },
 };
-
-export { Mutation };

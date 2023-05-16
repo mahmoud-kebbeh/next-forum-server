@@ -1,31 +1,17 @@
-import User from "./../../models/User.js";
 import Forum from "./../../models/Forum.js";
 import Topic from "./../../models/Topic.js";
+import User from "./../../models/User.js";
 
-const Comment = {
-    user: async function (parent, args) {
-    const { userId } = parent;
-
-    const user = await User.findById(userId)
-
-    return user;
-    },
-
-    forum: async function (parent, args) {
-    const { forumId } = parent;
-
-    const forum = await Forum.findById(forumId)
-
-    return forum;
-    },
-
-    topic: async function (parent, args) {
+export const Comment = {
+  topic: async function (parent, args) {
     const { topicId } = parent;
 
-    const topic = await Topic.findById(topicId)
+    return await Topic.findById(topicId);
+  },
+  
+  user: async function (parent, args) {
+    const { userId } = parent;
 
-    return topic;
-    },
+    return await User.findById(userId);
+  },
 };
-
-export { Comment };

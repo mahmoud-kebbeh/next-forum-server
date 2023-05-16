@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-export const topicSchema = new mongoose.Schema(
+const topicSchema = new mongoose.Schema(
   {
     index: {
       type: Number,
@@ -10,13 +10,13 @@ export const topicSchema = new mongoose.Schema(
     title: {
       type: String,
       required: true,
-      // minlength: 3,
-      // maxlength: 33,
     },
-    type: {
-      type: String,
-      required: true,
+
+    hidden: {
+    type: Boolean,
+    default: false,
     },
+
     forumId: {
       type: mongoose.Types.ObjectId,
       required: true,
@@ -25,6 +25,7 @@ export const topicSchema = new mongoose.Schema(
       type: mongoose.Types.ObjectId,
       required: true,
     },
+    
     slug: {
       type: String,
       required: true,
