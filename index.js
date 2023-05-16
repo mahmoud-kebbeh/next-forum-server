@@ -90,6 +90,21 @@ const server = new ApolloServer({
 
 await server.start();
 
+// Cross Origin Resource Sharing
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "https://next-forum-client.vercel.app");
+  res.header(
+    "Access-Control-Allow-Methods",
+    "POST, GET, OPTIONS, PATCH, DELETE"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept"
+  );
+
+  next();
+});
+
 app.post("/upload", upload.single('avatar'), async (req, res) => {
   // console.log(req.file);
   // console.log(req.file.path);
@@ -117,21 +132,6 @@ app.post("/upload", upload.single('avatar'), async (req, res) => {
   } catch(error) {
     res.status(400).json({ error: "Image is corrupted, please choose another" });
   }
-});
-
-// Cross Origin Resource Sharing
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "https://next-forum-client.vercel.app");
-  res.header(
-    "Access-Control-Allow-Methods",
-    "POST, GET, OPTIONS, PATCH, DELETE"
-  );
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept"
-  );
-
-  next();
 });
 
 app.use(
