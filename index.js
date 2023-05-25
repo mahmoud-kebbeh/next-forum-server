@@ -38,7 +38,7 @@ setInterval(() => {
     .then(res => res.text())
     .then(body => console.log("fetched successfully"))
     .catch(err => console.error(err));
-}, 3 * 290000);
+}, 290000);
 
 const multerStorage = multer.memoryStorage(
 // {
