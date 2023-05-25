@@ -29,6 +29,16 @@ const origin = process.env.ORIGIN || ['https://next-forum-client.vercel.app'];
 
 const app = express();
 
+await fetch('https://next-forum-client.vercel.app/');
+
+// Fetch the link every ~14.8 minutes (300000 milliseconds)
+setInterval(() => {
+  fetch('https://next-forum-client.vercel.app/')
+    .then(res => res.text())
+    .then(body => console.log("fetched successfully"))
+    .catch(err => console.error(err));
+}, 3 * 290000);
+
 const multerStorage = multer.memoryStorage(
 // {
 //   destination: (req, file, cb) => {
